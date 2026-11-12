@@ -271,7 +271,7 @@
                     <button type="button" class="btn btn-danger" id="btnDeleteWorker">刪除目前這位</button>
                     <button type="button" class="btn" id="btnExport">⬇ 匯出備份檔</button>
                     <button type="button" class="btn" id="btnImport">⬆ 匯入備份檔</button>
-                    <input type="file" id="importFile" accept=".json,application/json" hidden>
+                    <input type="file" id="importFile" accept=".xlsx,.json" hidden>
                 </div>
             </div>
             <div class="worker-tabs" id="workerTabs"></div>
@@ -359,6 +359,7 @@
 
 <div id="printArea"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =========================================================
    內建假日（行政院人事行政總處 政府行政機關辦公日曆表）
@@ -842,13 +843,133 @@ function download(blob, filename) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/* 備份檔為 Excel（.xlsx）：
+   「廚工資料」「請休紀錄」「假日設定」三個工作表是匯入時讀取的資料；
+   其餘「116年 王小明」這類工作表是方便用 Excel 直接查看的月曆格式，匯入時不讀取。 */
+const SHEET_WORKERS = '廚工資料', SHEET_HOURS = '請休紀錄', SHEET_HOL = '假日設定', SHEET_README = '說明';
+
 function exportData() {
+    if (typeof XLSX === 'undefined') { alert('Excel 功能載入失敗，請確認網路連線後重新整理頁面。'); return; }
     const t = new Date();
     const pad = n => String(n).padStart(2, '0');
     const stamp = `${t.getFullYear() - 1911}${pad(t.getMonth() + 1)}${pad(t.getDate())}`;
-    const payload = { app: 'kitchen-leave-record', exportedAt: t.toISOString(), ...store };
-    download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `廚工補休紀錄_備份${stamp}.json`);
+    const wb = XLSX.utils.book_new();
+
+    const readme = [
+        ['廚工補休時數紀錄 備份檔'],
+        ['匯出日期', todayRoc()],
+        [],
+        ['這個檔案可以在系統按「⬆ 匯入備份檔」還原全部資料（換電腦或備份用）。'],
+        ['匯入時會讀取「廚工資料」「請休紀錄」「假日設定」三個工作表，請勿更改這三個工作表的欄位名稱。'],
+        ['「○○年 姓名」工作表是方便查看的月曆格式，修改它不會影響匯入。']
+    ];
+    const wsReadme = XLSX.utils.aoa_to_sheet(readme);
+    wsReadme['!cols'] = [{ wch: 14 }, { wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, wsReadme, SHEET_README);
+
+    const wRows = [['編號', '職別', '姓名', '年度(民國)', '年度特休(天)', '月薪']];
+    const hRows = [['編號', '姓名', '年度(民國)', '月', '日', '時數']];
+    store.workers.forEach(w => {
+        const years = Object.keys(w.years).map(Number).sort((a, b) => a - b);
+        if (!years.length) wRows.push([w.id, w.job, w.name, '', '', '']);
+        years.forEach(y => {
+            const rec = w.years[y];
+            wRows.push([w.id, w.job, w.name, y, rec.vDays, rec.salary || '']);
+            Object.keys(rec.hoursMap)
+                .map(k => k.split('-').map(Number))
+                .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+                .forEach(([m, d]) => hRows.push([w.id, w.name, y, m, d, num(rec.hoursMap[`${m}-${d}`])]));
+        });
+    });
+    const wsW = XLSX.utils.aoa_to_sheet(wRows);
+    wsW['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 11 }, { wch: 13 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsW, SHEET_WORKERS);
+    const wsH = XLSX.utils.aoa_to_sheet(hRows);
+    wsH['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 11 }, { wch: 5 }, { wch: 5 }, { wch: 7 }];
+    XLSX.utils.book_append_sheet(wb, wsH, SHEET_HOURS);
+
+    const holRows = [['年度(民國)', '月', '日', '名稱']];
+    Object.keys(store.holidays).forEach(y => {
+        Object.entries(store.holidays[y]).forEach(([k, name]) => {
+            const [m, d] = k.split('-').map(Number);
+            holRows.push([Number(y), m, d, name]);
+        });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(holRows), SHEET_HOL);
+
+    // 方便查看的月曆格式：每人每年度一個工作表
+    const used = new Set(wb.SheetNames);
+    store.workers.forEach((w, i) => {
+        Object.keys(w.years).map(Number).sort((a, b) => a - b).forEach(y => {
+            const rec = w.years[y];
+            const grid = [[`民國 ${y} 年 ${w.job} ${w.name}`, '', `年度特休 ${fmt(rec.vDays)} 天`],
+                ['月份', ...Array.from({ length: 31 }, (_, k) => k + 1), '小計']];
+            let total = 0;
+            for (let m = 1; m <= 12; m++) {
+                const row = [m + '月'];
+                let sum = 0;
+                for (let d = 1; d <= 31; d++) {
+                    const v = rec.hoursMap[`${m}-${d}`];
+                    row.push(v === undefined ? '' : num(v));
+                    sum += num(v);
+                }
+                row.push(sum);
+                total += sum;
+                grid.push(row);
+            }
+            grid.push(['合計', ...Array(31).fill(''), total]);
+            let name = `${y}年 ${w.name || '未命名' + (i + 1)}`.replace(/[\[\]:*?\/\\]/g, '').slice(0, 28);
+            let n = 2, base = name;
+            while (used.has(name)) name = `${base}(${n++})`;
+            used.add(name);
+            const ws = XLSX.utils.aoa_to_sheet(grid);
+            ws['!cols'] = [{ wch: 6 }, ...Array(31).fill({ wch: 4 }), { wch: 6 }];
+            XLSX.utils.book_append_sheet(wb, ws, name);
+        });
+    });
+
+    XLSX.writeFile(wb, `廚工補休紀錄_備份${stamp}.xlsx`);
     toast(`已匯出 ${store.workers.length} 位廚工的資料`);
+}
+
+// 讀取 Excel 備份檔
+function parseXlsx(buf) {
+    const wb = XLSX.read(buf, { type: 'array' });
+    const wsW = wb.Sheets[SHEET_WORKERS], wsH = wb.Sheets[SHEET_HOURS];
+    if (!wsW) throw new Error(`找不到「${SHEET_WORKERS}」工作表`);
+    const rows = XLSX.utils.sheet_to_json(wsW, { defval: '' });
+    const byId = new Map(), byName = new Map();
+    rows.forEach(r => {
+        const name = String(r['姓名']).trim();
+        let id = String(r['編號']).trim();
+        if (!id) id = byName.get(name) || newId();
+        let w = byId.get(id);
+        if (!w) {
+            w = makeWorker({ id, job: String(r['職別']).trim(), name });
+            byId.set(id, w);
+            if (name) byName.set(name, id);
+        }
+        const y = num(r['年度(民國)']);
+        if (y) w.years[y] = makeRec({ vDays: r['年度特休(天)'], salary: r['月薪'] });
+    });
+    if (wsH) {
+        XLSX.utils.sheet_to_json(wsH, { defval: '' }).forEach(r => {
+            const id = String(r['編號']).trim() || byName.get(String(r['姓名']).trim());
+            const w = byId.get(id);
+            const y = num(r['年度(民國)']), m = num(r['月']), d = num(r['日']);
+            if (!w || !y || !m || !d || r['時數'] === '') return;
+            getRec(w, y).hoursMap[`${m}-${d}`] = String(r['時數']);
+        });
+    }
+    const holidays = {};
+    if (wb.Sheets[SHEET_HOL]) {
+        XLSX.utils.sheet_to_json(wb.Sheets[SHEET_HOL], { defval: '' }).forEach(r => {
+            const y = num(r['年度(民國)']), m = num(r['月']), d = num(r['日']);
+            if (!y || !m || !d) return;
+            (holidays[y] = holidays[y] || {})[`${m}-${d}`] = String(r['名稱']).trim() || '放假';
+        });
+    }
+    return { version: 1, currentYear: store.currentYear, currentId: store.currentId, workers: [...byId.values()], holidays };
 }
 
 // 支援本系統備份檔，也支援舊版 worktool4 的資料（當作 115 年）
@@ -871,10 +992,12 @@ function importData(ev) {
     const file = ev.target.files[0];
     ev.target.value = '';
     if (!file) return;
+    const isJson = /\.json$/i.test(file.name);
+    if (!isJson && typeof XLSX === 'undefined') { alert('Excel 功能載入失敗，請確認網路連線後重新整理頁面。'); return; }
     const reader = new FileReader();
     reader.onload = () => {
         try {
-            const next = parseImport(JSON.parse(reader.result));
+            const next = isJson ? parseImport(JSON.parse(reader.result)) : parseXlsx(new Uint8Array(reader.result));
             if (!next.workers.length) throw new Error('檔案裡沒有任何廚工資料');
             const names = next.workers.map((w, i) => w.name || `未命名 ${i + 1}`).join('、');
             if (!confirm(`檔案內有 ${next.workers.length} 位廚工：\n${names}\n\n匯入後會「取代」目前這台電腦上的所有資料，確定要匯入嗎？`)) return;
@@ -888,7 +1011,8 @@ function importData(ev) {
             alert('匯入失敗：這不是有效的備份檔。\n' + e.message);
         }
     };
-    reader.readAsText(file, 'utf-8');
+    if (isJson) reader.readAsText(file, 'utf-8');
+    else reader.readAsArrayBuffer(file);
 }
 
 /* ---------- 年度／分頁 ---------- */
