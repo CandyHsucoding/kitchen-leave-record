@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>廚工補休時數紀錄與年底結算</title>
+<style>
+    :root {
+        --bg-holiday: #fdeaea;
+        --holiday-text: #b00020;
+        --border-color: #333;
+        --primary-color: #1e293b;
+        --accent-color: #334155;
+        --focus-color: #3498db;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --soft: #f8fafc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", sans-serif;
+        margin: 24px 16px;
+        background-color: #f0f2f5;
+        color: #1e293b;
+        line-height: 1.6;
+    }
+
+    .container {
+        max-width: 1300px;
+        margin: 0 auto;
+        background: white;
+        padding: 28px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border-radius: 8px;
+    }
+
+    header { text-align: center; margin-bottom: 20px; }
+
+    h1 {
+        margin: 0;
+        font-size: 26px;
+        color: var(--primary-color);
+        letter-spacing: 3px;
+        font-weight: 900;
+    }
+
+    .subtitle { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+    /* ===== 頂部：年度 + 功能分頁 ===== */
+    .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        border-bottom: 2px solid var(--line);
+        margin-bottom: 20px;
+    }
+
+    .year-pick { display: flex; align-items: center; gap: 8px; font-weight: 700; padding-bottom: 8px; }
+    .year-pick select {
+        font-size: 16px; font-weight: 700; padding: 4px 8px;
+        border: 1px solid #cbd5e1; border-radius: 6px; font-family: inherit;
+    }
+
+    .nav { display: flex; flex-wrap: wrap; gap: 4px; }
+    .nav button {
+        border: none; background: none; font-family: inherit; font-size: 15px;
+        padding: 8px 16px; cursor: pointer; color: var(--muted);
+        border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    .nav button:hover { color: var(--primary-color); }
+    .nav button.active { color: var(--primary-color); font-weight: 700; border-bottom-color: var(--focus-color); }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .btn {
+        border: 1px solid #cbd5e1; background: white; color: #1e293b;
+        border-radius: 6px; padding: 6px 12px; font-size: 14px; font-family: inherit;
+        cursor: pointer; transition: all 0.15s;
+    }
+    .btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+    .btn-primary:hover { background: #0f172a; }
+    .btn-danger { color: #b00020; border-color: #f1b5bd; }
+    .btn-danger:hover { background: #fdeaea; border-color: #b00020; }
+    .btn-big { padding: 12px 28px; font-size: 16px; font-weight: 700; border-radius: 30px; }
+
+    .panel {
+        margin-bottom: 18px; padding: 14px 16px; background: var(--soft);
+        border: 1px solid var(--line); border-radius: 6px;
+    }
+
+    .row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .panel-title { font-weight: 700; font-size: 15px; }
+
+    .worker-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .worker-tab {
+        border: 1px solid #cbd5e1; background: white; border-radius: 20px;
+        padding: 5px 14px; font-size: 14px; font-family: inherit; cursor: pointer; color: #334155;
+    }
+    .worker-tab:hover { border-color: var(--focus-color); }
+    .worker-tab.active { background: var(--focus-color); border-color: var(--focus-color); color: white; font-weight: 700; }
+    .worker-tab .tab-total { font-size: 12px; opacity: 0.8; margin-left: 4px; }
+
+    .info-bar { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; }
+    .info-group { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .info-input {
+        border: 1px solid #cbd5e1; border-radius: 4px; font-size: 15px;
+        padding: 5px 10px; width: 150px; background: white; font-family: inherit;
+    }
+    .info-input.short { width: 80px; text-align: center; }
+    .info-input:focus { border-color: var(--focus-color); box-shadow: 0 0 0 3px rgba(52,152,219,0.2); outline: none; }
+    .hint { font-size: 13px; color: var(--muted); font-weight: normal; }
+
+    .left-box {
+        display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px;
+        border-top: 1px dashed #cbd5e1; font-size: 14px;
+    }
+    .left-box b { font-size: 16px; }
+    .left-box .warn { color: #b00020; }
+
+    /* ===== 紀錄表 ===== */
+    .sheet-wrap { overflow-x: auto; }
+
+    table.rec {
+        width: 100%; min-width: 1050px; border-collapse: collapse; table-layout: fixed;
+        font-size: 11px; border: 2px solid var(--border-color);
+    }
+    table.rec th {
+        background-color: var(--accent-color); color: white; font-weight: 500;
+        border: 1px solid rgba(255,255,255,0.2); padding: 6px 0;
+    }
+    table.rec td {
+        border: 1px solid var(--border-color); text-align: center; padding: 0;
+        height: 50px; vertical-align: top; position: relative;
+    }
+    table.rec .col-month { width: 45px; background-color: #f1f5f9; font-weight: bold; vertical-align: middle; }
+    table.rec .col-total { width: 62px; font-weight: bold; background-color: var(--soft); vertical-align: middle; }
+    table.rec th.col-total { background-color: var(--accent-color); }
+    .day-label { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; line-height: 1.2; }
+    .holiday-name { display: block; font-size: 8px; color: var(--holiday-text); font-weight: 600; line-height: 1.2; }
+    .hour-val { display: block; font-size: 15px; font-weight: 700; color: #0f172a; }
+
+    input.hour-input {
+        position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: transparent;
+        text-align: center; font-size: 15px; font-weight: 700; color: #0f172a; outline: none;
+        padding-top: 18px; z-index: 5; cursor: pointer; font-family: inherit;
+    }
+    input.hour-input:focus { background: rgba(52,152,219,0.12); }
+
+    .bg-sat { background-color: #f1f7ff; }
+    .bg-sun { background-color: #fff8f8; }
+    .bg-holiday { background-color: var(--bg-holiday) !important; }
+    .bg-none { background-color: #e2e8f0; }
+
+    tr.summary-row td {
+        background-color: #fffde7; font-weight: bold; font-size: 15px; color: #854d0e;
+        vertical-align: middle; height: 36px;
+    }
+
+    .legend { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; justify-content: center; color: var(--muted); }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .box { width: 16px; height: 16px; border-radius: 3px; border: 1px solid #cbd5e1; }
+
+    .bottom-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+
+    /* ===== 結算表 ===== */
+    table.settle { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.settle th, table.settle td { border: 1px solid #94a3b8; padding: 8px 6px; text-align: center; }
+    table.settle th { background: var(--accent-color); color: white; font-weight: 600; }
+    table.settle td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.settle td.pay { font-weight: 800; color: #0f172a; }
+    table.settle tr.total td { background: #fffde7; font-weight: 800; }
+    table.settle .warn { color: #b00020; font-size: 12px; display: block; }
+    .formula { font-size: 13px; color: var(--muted); margin-top: 12px; line-height: 1.8; }
+
+    /* ===== 空白表 ===== */
+    .opt { display: flex; flex-direction: column; gap: 8px; }
+    .opt label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .preview-box { border: 1px dashed #94a3b8; padding: 16px; border-radius: 6px; margin-top: 16px; overflow-x: auto; }
+    .preview-box .sheet { min-width: 1050px; }
+
+    /* ===== 假日設定 ===== */
+    table.hol { border-collapse: collapse; font-size: 14px; min-width: 420px; }
+    table.hol th, table.hol td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+    table.hol th { background: var(--soft); }
+    .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #e0f2fe; color: #075985; }
+    .badge.custom { background: #fef3c7; color: #92400e; }
+    .badge.none { background: #fdeaea; color: #b00020; }
+
+    /* ===== 列印用表頭（列印區塊才看得到） ===== */
+    .sheet h2 { text-align: center; margin: 0 0 8px; font-size: 20px; letter-spacing: 2px; }
+    .sheet-info {
+        display: flex; justify-content: space-between; font-size: 13px; font-weight: bold;
+        border-bottom: 1px solid #333; padding-bottom: 3px; margin-bottom: 6px;
+    }
+    .blank-line { display: inline-block; min-width: 110px; border-bottom: 1px solid #333; }
+    .blank-line.short { min-width: 40px; }
+    .sheet-foot { display: flex; justify-content: flex-end; gap: 60px; font-size: 13px; margin-top: 10px; font-weight: bold; }
+
+    #printArea { display: none; }
+
+    .warn { color: #b00020; }
+
+    .toast {
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        background: #1e293b; color: white; padding: 10px 20px; border-radius: 6px; font-size: 14px;
+        opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+
+    @media (max-width: 640px) {
+        body { margin: 0; }
+        .container { padding: 16px; border-radius: 0; }
+        h1 { font-size: 20px; letter-spacing: 1px; }
+    }
+
+    @media print {
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        @page { size: A4 landscape; margin: 6mm 8mm; }
+        body { margin: 0; background: white; }
+        .container, .toast { display: none !important; }
+        #printArea { display: block; }
+        #printArea .sheet { page-break-after: always; break-after: page; }
+        #printArea .sheet:last-child { page-break-after: auto; break-after: auto; }
+        table.rec { min-width: 0; }
+        table.rec th { background-color: #f1f5f9 !important; color: black; border: 1px solid black; }
+        table.rec td { height: 42px; border: 1px solid black; color: black; }
+        table.rec .col-month { background: transparent !important; }
+        .day-label { font-size: 8px; color: #333; }
+        .hour-val { font-size: 13px; }
+        table.settle { font-size: 12px; }
+        table.settle th { background: #f1f5f9 !important; color: black; }
+        table, tr, td, th { page-break-inside: avoid; break-inside: avoid; }
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1 id="mainTitle">廚工補休時數紀錄表</h1>
+        <div class="subtitle">假日依行政院人事行政總處「政府行政機關辦公日曆表」預先標註</div>
+    </header>
+
+    <div class="topbar">
+        <div class="year-pick">
+            年度：民國 <select id="yearSel"></select> 年
+        </div>
+        <nav class="nav" id="nav">
+            <button type="button" data-view="record" class="active">紀錄登記</button>
+            <button type="button" data-view="settle">年底結算</button>
+            <button type="button" data-view="blank">空白表列印</button>
+            <button type="button" data-view="holiday">假日設定</button>
+        </nav>
+    </div>
+
+    <!-- ===== 1. 紀錄登記 ===== -->
+    <section class="view active" id="view-record">
+        <div class="panel">
+            <div class="row">
+                <div class="panel-title">廚工名單（點選切換）</div>
+                <div class="actions">
+                    <button type="button" class="btn btn-primary" id="btnAddWorker">＋ 新增廚工</button>
+                    <button type="button" class="btn btn-danger" id="btnDeleteWorker">刪除目前這位</button>
+                    <button type="button" class="btn" id="btnExport">⬇ 匯出備份檔</button>
+                    <button type="button" class="btn" id="btnImport">⬆ 匯入備份檔</button>
+                    <input type="file" id="importFile" accept=".json,application/json" hidden>
+                </div>
+            </div>
+            <div class="worker-tabs" id="workerTabs"></div>
+        </div>
+
+        <div class="panel">
+            <div class="info-bar">
+                <div class="info-group">職別：<input type="text" id="fJob" class="info-input" placeholder="例如：廚工"></div>
+                <div class="info-group">姓名：<input type="text" id="fName" class="info-input" placeholder="輸入姓名"></div>
+                <div class="info-group">年度特休：<input type="number" id="fDays" class="info-input short" min="0" step="0.5"> 天</div>
+                <div class="info-group">月薪：<input type="number" id="fSalary" class="info-input" min="0" step="1" placeholder="結算加班費用"> 元</div>
+            </div>
+            <div class="left-box" id="leftBox"></div>
+        </div>
+
+        <div class="hint" style="margin-bottom:8px;">在格子裡輸入當天請休的特休時數（可輸入 0.5 小時）。資料會自動存在這台電腦的瀏覽器中，換電腦請用「匯出／匯入備份檔」。</div>
+        <div class="sheet-wrap" id="recordSheet"></div>
+
+        <div class="legend">
+            <div class="legend-item"><div class="box" style="background:#fff;"></div> 平日</div>
+            <div class="legend-item"><div class="box bg-sat"></div> 星期六</div>
+            <div class="legend-item"><div class="box bg-sun"></div> 星期日</div>
+            <div class="legend-item"><div class="box bg-holiday" style="border-color:#b00020;"></div> 國定假日／補假</div>
+        </div>
+
+        <div class="bottom-actions">
+            <button type="button" class="btn btn-primary btn-big" id="btnPrintOne">🖨 列印這位的紀錄表</button>
+            <button type="button" class="btn btn-big" id="btnPrintAll">🖨 列印全部廚工（每人一頁）</button>
+        </div>
+    </section>
+
+    <!-- ===== 2. 年底結算 ===== -->
+    <section class="view" id="view-settle">
+        <div class="hint" style="margin-bottom:10px;">依各廚工在「紀錄登記」填寫的已休時數，計算尚未休完的特休與不休假加班費。月薪請在「紀錄登記」各人的資料列填寫。</div>
+        <div class="sheet-wrap" id="settleWrap"></div>
+        <div class="formula">
+            計算方式：未休時數 ＝ 年度特休天數 × 8 − 全年已休時數<br>
+            日薪 ＝ 月薪 ÷ 30；時薪 ＝ 日薪 ÷ 8<br>
+            不休假加班費 ＝ 月薪 ÷ 30 × 未休天數（不足一天按小時計：時薪 × 未休時數），金額四捨五入至元
+        </div>
+        <div class="bottom-actions">
+            <button type="button" class="btn btn-primary btn-big" id="btnPrintSettle">🖨 列印結算表</button>
+            <button type="button" class="btn btn-big" id="btnCsv">⬇ 匯出 Excel（CSV）</button>
+        </div>
+    </section>
+
+    <!-- ===== 3. 空白表列印 ===== -->
+    <section class="view" id="view-blank">
+        <div class="panel">
+            <div class="panel-title" style="margin-bottom:8px;">列印 <span class="yearText"></span> 年空白補休紀錄表（給廚工新年度登記用）</div>
+            <div class="opt">
+                <label><input type="radio" name="blankMode" value="plain" checked> 空白表（職別、姓名留空讓廚工自己寫），張數：
+                    <input type="number" id="blankCopies" class="info-input short" min="1" max="50" value="1"></label>
+                <label><input type="radio" name="blankMode" value="named"> 每位廚工一張，預先印上職別與姓名（共 <span id="namedCount">0</span> 張）</label>
+            </div>
+            <div class="hint" style="margin-top:8px;">提醒：瀏覽器列印時請選「橫向」，並勾選「背景圖形」才會印出假日底色。</div>
+        </div>
+        <div class="bottom-actions" style="margin-top:0;">
+            <button type="button" class="btn btn-primary btn-big" id="btnPrintBlank">🖨 列印空白表</button>
+        </div>
+        <div class="preview-box" id="blankPreview"></div>
+    </section>
+
+    <!-- ===== 4. 假日設定 ===== -->
+    <section class="view" id="view-holiday">
+        <div class="panel">
+            <div class="row">
+                <div>民國 <b class="yearText"></b> 年假日：<span id="holSource"></span></div>
+                <div class="actions">
+                    <button type="button" class="btn" id="btnHolReset">還原為內建的人事總處假日</button>
+                </div>
+            </div>
+            <div class="hint" style="margin-top:6px;">只需列出「國定假日、補假、調整放假」等要標紅的日期，一般週六日不用加。若人事總處公告有異動，可在這裡修改。</div>
+        </div>
+        <div class="panel">
+            <div class="info-bar">
+                <div class="info-group">日期：<input type="date" id="holDate" class="info-input"></div>
+                <div class="info-group">名稱：<input type="text" id="holName" class="info-input" placeholder="例如：補假"></div>
+                <button type="button" class="btn btn-primary" id="btnHolAdd">＋ 加入</button>
+            </div>
+        </div>
+        <div class="sheet-wrap"><table class="hol" id="holTable"></table></div>
+    </section>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+/* =========================================================
+   內建假日（行政院人事行政總處 政府行政機關辦公日曆表）
+   key = "月-日"，只列國定假日／補假，一般週末不列
+   ========================================================= */
+const PRESET_HOLIDAYS = {
+    115: {
+        "1-1": "元旦", "2-16": "除夕", "2-17": "春節", "2-18": "春節", "2-19": "春節",
+        "2-20": "初四(補)", "2-27": "補假", "2-28": "和平紀念", "4-3": "兒童節", "4-6": "清明補假",
+        "5-1": "勞動節", "6-19": "端午節", "9-25": "中秋節", "9-28": "教師節", "10-9": "補假",
+        "10-10": "國慶日", "10-25": "光復節", "10-26": "補假", "12-25": "行憲紀念"
+    },
+    116: {
+        "1-1": "元旦", "2-4": "小年夜", "2-5": "除夕", "2-6": "春節", "2-7": "春節", "2-8": "春節",
+        "2-9": "春節補假", "2-10": "春節補假", "2-28": "和平紀念", "3-1": "補假",
+        "4-4": "兒童節", "4-5": "清明節", "4-6": "兒童節補假", "4-30": "勞動節補假", "5-1": "勞動節",
+        "6-9": "端午節", "9-15": "中秋節", "9-28": "教師節", "10-10": "國慶日", "10-11": "補假",
+        "10-25": "光復節", "12-24": "行憲補假", "12-25": "行憲紀念", "12-31": "元旦補假"
+    }
+};
+
+const STORAGE_KEY = 'kitchen_leave_record_v1';
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const thisRocYear = new Date().getFullYear() - 1911;
+
+/* store = {
+     version, currentYear, currentId,
+     workers: [ { id, job, name, years: { "116": { vDays, salary, hoursMap: { "月-日": "時數" } } } } ],
+     holidays: { "116": { "月-日": "名稱" } }   // 使用者修改過的年度才會有
+   } */
+let store = { version: 1, currentYear: thisRocYear, currentId: null, workers: [], holidays: {} };
+
+/* ---------- 工具 ---------- */
+const $ = id => document.getElementById(id);
+const num = v => parseFloat(v) || 0;
+const fmt = n => Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+const money = n => Math.round(n).toLocaleString('zh-TW');
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+function newId() { return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function todayRoc() {
+    const t = new Date();
+    return `${t.getFullYear() - 1911}/${t.getMonth() + 1}/${t.getDate()}`;
+}
+function daysHours(h) {
+    const d = Math.floor(h / 8), r = h - d * 8;
+    if (!h) return '0';
+    return (d ? d + ' 天' : '') + (r ? (d ? ' ' : '') + fmt(r) + ' 小時' : '');
+}
+
+/* ---------- 資料 ---------- */
+function getYear() { return store.currentYear; }
+function getHolidays(y) { return store.holidays[y] || PRESET_HOLIDAYS[y] || {}; }
+function holidaySource(y) {
+    if (store.holidays[y]) return 'custom';
+    if (PRESET_HOLIDAYS[y]) return 'preset';
+    return 'none';
+}
+
+function makeWorker(d = {}) {
+    const w = { id: d.id || newId(), job: d.job || '', name: d.name || '', years: {} };
+    if (d.years && typeof d.years === 'object') {
+        Object.keys(d.years).forEach(y => w.years[y] = makeRec(d.years[y]));
+    }
+    return w;
+}
+function makeRec(d = {}) {
+    return {
+        vDays: num(d.vDays),
+        salary: num(d.salary),
+        hoursMap: (d.hoursMap && typeof d.hoursMap === 'object') ? { ...d.hoursMap } : {}
+    };
+}
+// 取得某人某年度的紀錄；沒有就建一筆（月薪沿用最近一年）
+function getRec(w, y) {
+    if (!w.years[y]) {
+        const prev = Object.keys(w.years).map(Number).filter(k => k < y).sort((a, b) => b - a)[0];
+        w.years[y] = makeRec({ salary: prev ? w.years[prev].salary : 0 });
+    }
+    return w.years[y];
+}
+function usedHours(rec) { return Object.values(rec.hoursMap).reduce((s, v) => s + num(v), 0); }
+
+function settleRow(w, y) {
+    const rec = getRec(w, y);
+    const quota = rec.vDays * 8;
+    const used = usedHours(rec);
+    const left = Math.max(0, quota - used);
+    const daily = rec.salary / 30;
+    const hourly = daily / 8;
+    return { w, rec, quota, used, left, over: used > quota ? used - quota : 0, daily, hourly, pay: Math.round(hourly * left) };
+}
+
+function currentWorker() { return store.workers.find(w => w.id === store.currentId) || store.workers[0]; }
+
+function loadStore() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            const d = JSON.parse(raw);
+            store = {
+                version: 1,
+                currentYear: num(d.currentYear) || thisRocYear,
+                currentId: d.currentId,
+                workers: (d.workers || []).map(makeWorker),
+                holidays: d.holidays || {}
+            };
+        }
+    } catch (e) { console.error('Load error', e); }
+    if (!store.workers.length) store.workers = [makeWorker({ job: '廚工' })];
+    if (!store.workers.some(w => w.id === store.currentId)) store.currentId = store.workers[0].id;
+    saveStore();
+}
+function saveStore() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) {}
+}
+
+/* ---------- 共用：產生一張年度表格 ----------
+   mode: 'edit'（可輸入）| 'static'（列印／預覽用）
+   hoursMap: 要顯示的時數，空白表傳 {} */
+function buildTable(y, mode, hoursMap) {
+    const ad = y + 1911;
+    const hol = getHolidays(y);
+    const table = el('table', 'rec');
+    const thead = el('thead'), hr = el('tr');
+    hr.appendChild(el('th', 'col-month', '月份'));
+    for (let d = 1; d <= 31; d++) hr.appendChild(el('th', '', d));
+    hr.appendChild(el('th', 'col-total', '小計'));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    const tbody = el('tbody');
+    let grand = 0;
+    for (let m = 1; m <= 12; m++) {
+        const tr = el('tr');
+        tr.appendChild(el('td', 'col-month', m + '月'));
+        const dim = new Date(ad, m, 0).getDate();
+        let sum = 0;
+        for (let d = 1; d <= 31; d++) {
+            const td = el('td');
+            if (d > dim) { td.className = 'bg-none'; tr.appendChild(td); continue; }
+            const key = `${m}-${d}`;
+            const dow = new Date(ad, m - 1, d).getDay();
+            const hName = hol[key];
+            td.className = hName ? 'bg-holiday' : dow === 6 ? 'bg-sat' : dow === 0 ? 'bg-sun' : '';
+            td.appendChild(el('span', 'day-label', WEEK[dow]));
+            if (hName) td.appendChild(el('span', 'holiday-name', hName));
+            const v = hoursMap[key] ?? '';
+            sum += num(v);
+            if (mode === 'edit') {
+                const inp = el('input', 'hour-input');
+                inp.type = 'number'; inp.step = '0.5'; inp.min = '0';
+                inp.dataset.key = key; inp.dataset.month = m;
+                inp.value = v;
+                inp.title = `${m}/${d}（${WEEK[dow]}）${hName || ''}`;
+                td.appendChild(inp);
+            } else if (v !== '') {
+                td.appendChild(el('span', 'hour-val', v));
+            }
+            tr.appendChild(td);
+        }
+        const sub = el('td', 'col-total', mode === 'static' && !Object.keys(hoursMap).length ? '' : fmt(sum));
+        sub.id = mode === 'edit' ? `sub-${m}` : '';
+        tr.appendChild(sub);
+        tbody.appendChild(tr);
+        grand += sum;
+    }
+    table.appendChild(tbody);
+
+    const tfoot = el('tfoot'), fr = el('tr', 'summary-row');
+    const lab = el('td', '', '全年度已休特休時數合計：');
+    lab.colSpan = 32; lab.style.textAlign = 'right'; lab.style.paddingRight = '20px';
+    const tot = el('td', 'col-total', mode === 'static' && !Object.keys(hoursMap).length ? '' : fmt(grand));
+    if (mode === 'edit') tot.id = 'yearTotal';
+    fr.append(lab, tot);
+    tfoot.appendChild(fr);
+    table.appendChild(tfoot);
+    return table;
+}
+
+/* 一整頁（標題＋資料列＋表格），worker 為 null 時是空白表 */
+function buildSheet(y, worker, withData) {
+    const sheet = el('div', 'sheet');
+    sheet.appendChild(el('h2', '', `民國 ${y} 年（${y + 1911}年）廚工補休時數紀錄表`));
+    const info = el('div', 'sheet-info');
+    const rec = worker && withData ? getRec(worker, y) : null;
+    const field = (label, value, short) => {
+        const div = el('div', '', label);
+        if (value === '' || value === null || value === undefined) div.appendChild(el('span', 'blank-line' + (short ? ' short' : ''), ''));
+        else div.appendChild(document.createTextNode(value));
+        return div;
+    };
+    info.appendChild(field('職別：', worker ? worker.job : ''));
+    info.appendChild(field('姓名：', worker ? worker.name : ''));
+    const vd = el('div', '', '年度特休：');
+    if (rec) vd.appendChild(document.createTextNode(`${fmt(rec.vDays)} 天（${fmt(rec.vDays * 8)} 小時）`));
+    else { vd.appendChild(el('span', 'blank-line short', '')); vd.appendChild(document.createTextNode(' 天')); }
+    info.appendChild(vd);
+    info.appendChild(field('列印日期：', todayRoc()));
+    sheet.appendChild(info);
+    sheet.appendChild(buildTable(y, 'static', rec ? rec.hoursMap : {}));
+    if (!withData) {
+        const foot = el('div', 'sheet-foot');
+        foot.append(el('div', '', '廚工簽名：＿＿＿＿＿＿＿＿'), el('div', '', '營養師核章：＿＿＿＿＿＿＿＿'));
+        sheet.appendChild(foot);
+    }
+    return sheet;
+}
+
+function doPrint(nodes) {
+    const area = $('printArea');
+    area.innerHTML = '';
+    nodes.forEach(n => area.appendChild(n));
+    setTimeout(() => window.print(), 50);
+}
+
+/* ---------- 畫面：紀錄登記 ---------- */
+function renderTabs() {
+    const box = $('workerTabs');
+    box.innerHTML = '';
+    const y = getYear();
+    store.workers.forEach((w, i) => {
+        const b = el('button', 'worker-tab' + (w.id === store.currentId ? ' active' : ''));
+        b.type = 'button';
+        b.append(el('span', '', w.name || `未命名 ${i + 1}`), el('span', 'tab-total', `(${fmt(usedHours(getRec(w, y)))}h)`));
+        b.onclick = () => { store.currentId = w.id; saveStore(); renderRecord(); };
+        box.appendChild(b);
+    });
+    $('btnDeleteWorker').disabled = store.workers.length <= 1;
+}
+
+function renderLeft() {
+    const r = settleRow(currentWorker(), getYear());
+    const box = $('leftBox');
+    box.innerHTML = '';
+    const item = (label, val, cls) => {
+        const s = el('span', cls || '', label + '：');
+        s.appendChild(el('b', '', val));
+        box.appendChild(s);
+    };
+    item('特休總時數', fmt(r.quota) + ' 小時');
+    item('已休', fmt(r.used) + ' 小時');
+    if (r.over) item('超休', fmt(r.over) + ' 小時', 'warn');
+    else item('尚未休完', `${fmt(r.left)} 小時（${daysHours(r.left)}）`);
+    if (r.rec.salary) item('不休假加班費', money(r.pay) + ' 元');
+}
+
+function renderRecord() {
+    const w = currentWorker();
+    const y = getYear();
+    const rec = getRec(w, y);
+    $('fJob').value = w.job;
+    $('fName').value = w.name;
+    $('fDays').value = rec.vDays;
+    $('fSalary').value = rec.salary || '';
+    const wrap = $('recordSheet');
+    wrap.innerHTML = '';
+    wrap.appendChild(buildTable(y, 'edit', rec.hoursMap));
+    renderTabs();
+    renderLeft();
+}
+
+function onHourInput(e) {
+    const inp = e.target;
+    if (!inp.classList.contains('hour-input')) return;
+    const rec = getRec(currentWorker(), getYear());
+    if (inp.value === '') delete rec.hoursMap[inp.dataset.key];
+    else rec.hoursMap[inp.dataset.key] = inp.value;
+    const m = inp.dataset.month;
+    let sum = 0;
+    document.querySelectorAll(`#recordSheet input[data-month="${m}"]`).forEach(i => sum += num(i.value));
+    $(`sub-${m}`).textContent = fmt(sum);
+    $('yearTotal').textContent = fmt(usedHours(rec));
+    saveStore();
+    renderTabs();
+    renderLeft();
+}
+
+function onInfoInput() {
+    const w = currentWorker();
+    const rec = getRec(w, getYear());
+    w.job = $('fJob').value;
+    w.name = $('fName').value;
+    rec.vDays = num($('fDays').value);
+    rec.salary = num($('fSalary').value);
+    saveStore();
+    renderTabs();
+    renderLeft();
+}
+
+function addWorker() {
+    const w = makeWorker({ job: '廚工' });
+    store.workers.push(w);
+    store.currentId = w.id;
+    saveStore();
+    renderRecord();
+    $('fName').focus();
+    toast('已新增一位廚工，請輸入姓名');
+}
+
+function deleteCurrentWorker() {
+    if (store.workers.length <= 1) return;
+    const w = currentWorker();
+    const label = w.name || '這位未命名的廚工';
+    if (!confirm(`確定要刪除「${label}」嗎？\n所有年度的資料都會一起刪除，無法復原（建議先匯出備份檔）。`)) return;
+    const idx = store.workers.indexOf(w);
+    store.workers.splice(idx, 1);
+    store.currentId = store.workers[Math.max(0, idx - 1)].id;
+    saveStore();
+    renderRecord();
+    toast(`已刪除「${label}」`);
+}
+
+/* ---------- 畫面：年底結算 ---------- */
+function buildSettleTable() {
+    const y = getYear();
+    const t = el('table', 'settle');
+    const head = el('tr');
+    ['職別', '姓名', '年度特休', '特休時數', '已休時數', '未休時數', '未休（天／時）', '月薪', '日薪', '時薪', '不休假加班費']
+        .forEach(h => head.appendChild(el('th', '', h)));
+    const thead = el('thead'); thead.appendChild(head); t.appendChild(thead);
+    const tb = el('tbody');
+    let total = 0, totalLeft = 0;
+    store.workers.forEach((w, i) => {
+        const r = settleRow(w, y);
+        total += r.pay; totalLeft += r.left;
+        const tr = el('tr');
+        tr.appendChild(el('td', '', w.job));
+        tr.appendChild(el('td', '', w.name || `未命名 ${i + 1}`));
+        tr.appendChild(el('td', 'num', fmt(r.rec.vDays) + ' 天'));
+        tr.appendChild(el('td', 'num', fmt(r.quota)));
+        tr.appendChild(el('td', 'num', fmt(r.used)));
+        const leftTd = el('td', 'num', fmt(r.left));
+        if (r.over) leftTd.appendChild(el('span', 'warn', `超休 ${fmt(r.over)} 小時`));
+        tr.appendChild(leftTd);
+        tr.appendChild(el('td', '', daysHours(r.left)));
+        tr.appendChild(el('td', 'num', r.rec.salary ? money(r.rec.salary) : '—'));
+        tr.appendChild(el('td', 'num', r.rec.salary ? fmt(r.daily) : '—'));
+        tr.appendChild(el('td', 'num', r.rec.salary ? fmt(r.hourly) : '—'));
+        const payTd = el('td', 'num pay', r.rec.salary ? money(r.pay) : '');
+        if (!r.rec.salary) payTd.appendChild(el('span', 'warn', '未填月薪'));
+        tr.appendChild(payTd);
+        tb.appendChild(tr);
+    });
+    const tr = el('tr', 'total');
+    const lab = el('td', '', '合計'); lab.colSpan = 5;
+    tr.append(lab, el('td', 'num', fmt(totalLeft)), el('td', '', daysHours(totalLeft)));
+    const sp = el('td', ''); sp.colSpan = 3; tr.appendChild(sp);
+    tr.appendChild(el('td', 'num pay', money(total)));
+    tb.appendChild(tr);
+    t.appendChild(tb);
+    return t;
+}
+
+function renderSettle() {
+    const wrap = $('settleWrap');
+    wrap.innerHTML = '';
+    wrap.appendChild(buildSettleTable());
+}
+
+function printSettle() {
+    const y = getYear();
+    const sheet = el('div', 'sheet');
+    sheet.appendChild(el('h2', '', `民國 ${y} 年 廚工未休特休及不休假加班費結算表`));
+    const info = el('div', 'sheet-info');
+    info.append(el('div', '', `計算期間：${y} 年 1 月 1 日至 12 月 31 日`), el('div', '', `列印日期：${todayRoc()}`));
+    sheet.appendChild(info);
+    sheet.appendChild(buildSettleTable());
+    sheet.appendChild(el('div', 'formula', '計算方式：未休時數＝年度特休天數×8－全年已休時數；不休假加班費＝月薪÷30÷8×未休時數（即月薪÷30×未休天數，不足一天按小時計），四捨五入至元。'));
+    const foot = el('div', 'sheet-foot');
+    foot.append(el('div', '', '承辦人：＿＿＿＿＿＿'), el('div', '', '單位主管：＿＿＿＿＿＿'), el('div', '', '人事：＿＿＿＿＿＿'), el('div', '', '會計：＿＿＿＿＿＿'));
+    sheet.appendChild(foot);
+    doPrint([sheet]);
+}
+
+function exportCsv() {
+    const y = getYear();
+    const rows = [['職別', '姓名', '年度特休(天)', '特休時數', '已休時數', '未休時數', '未休(天/時)', '月薪', '日薪', '時薪', '不休假加班費']];
+    let total = 0;
+    store.workers.forEach((w, i) => {
+        const r = settleRow(w, y);
+        total += r.pay;
+        rows.push([w.job, w.name || `未命名 ${i + 1}`, fmt(r.rec.vDays), fmt(r.quota), fmt(r.used), fmt(r.left),
+            daysHours(r.left), r.rec.salary || '', r.rec.salary ? fmt(r.daily) : '', r.rec.salary ? fmt(r.hourly) : '', r.rec.salary ? r.pay : '']);
+    });
+    rows.push(['合計', '', '', '', '', '', '', '', '', '', total]);
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    download(new Blob(['﻿' + csv], { type: 'text/csv' }), `廚工不休假加班費結算_${y}年.csv`);
+}
+
+/* ---------- 畫面：空白表 ---------- */
+function blankMode() { return document.querySelector('input[name="blankMode"]:checked').value; }
+function renderBlank() {
+    const y = getYear();
+    $('namedCount').textContent = store.workers.length;
+    const prev = $('blankPreview');
+    prev.innerHTML = '';
+    prev.appendChild(el('div', 'hint', '預覽（第 1 張）：'));
+    const w = blankMode() === 'named' ? store.workers[0] : null;
+    prev.appendChild(buildSheet(y, w, false));
+    if (holidaySource(y) === 'none') {
+        prev.prepend(el('div', 'warn', `⚠ 民國 ${y} 年尚未內建假日，請先到「假日設定」加入國定假日。`));
+    }
+}
+function printBlank() {
+    const y = getYear();
+    let nodes;
+    if (blankMode() === 'named') nodes = store.workers.map(w => buildSheet(y, w, false));
+    else {
+        const n = Math.min(50, Math.max(1, Math.floor(num($('blankCopies').value)) || 1));
+        nodes = Array.from({ length: n }, () => buildSheet(y, null, false));
+    }
+    doPrint(nodes);
+}
+
+/* ---------- 畫面：假日設定 ---------- */
+function renderHoliday() {
+    const y = getYear();
+    const src = holidaySource(y);
+    const badge = $('holSource');
+    badge.className = 'badge' + (src === 'custom' ? ' custom' : src === 'none' ? ' none' : '');
+    badge.textContent = src === 'preset' ? '使用內建的人事總處假日' : src === 'custom' ? '已自行修改' : '尚未內建，請自行加入';
+    $('btnHolReset').disabled = !(src === 'custom' && PRESET_HOLIDAYS[y]);
+    $('holDate').min = `${y + 1911}-01-01`;
+    $('holDate').max = `${y + 1911}-12-31`;
+
+    const hol = getHolidays(y);
+    const t = $('holTable');
+    t.innerHTML = '';
+    const hr = el('tr');
+    ['日期', '星期', '名稱', ''].forEach(h => hr.appendChild(el('th', '', h)));
+    t.appendChild(hr);
+    Object.keys(hol)
+        .sort((a, b) => { const [am, ad] = a.split('-').map(Number), [bm, bd] = b.split('-').map(Number); return am - bm || ad - bd; })
+        .forEach(key => {
+            const [m, d] = key.split('-').map(Number);
+            const tr = el('tr');
+            tr.appendChild(el('td', '', `${m}/${d}`));
+            tr.appendChild(el('td', '', WEEK[new Date(y + 1911, m - 1, d).getDay()]));
+            tr.appendChild(el('td', '', hol[key]));
+            const td = el('td');
+            const b = el('button', 'btn btn-danger', '刪除');
+            b.type = 'button';
+            b.onclick = () => editHolidays(h => delete h[key]);
+            td.appendChild(b);
+            tr.appendChild(td);
+            t.appendChild(tr);
+        });
+    if (!Object.keys(hol).length) {
+        const tr = el('tr'), td = el('td', '', '（目前沒有任何假日）');
+        td.colSpan = 4; tr.appendChild(td); t.appendChild(tr);
+    }
+}
+function editHolidays(fn) {
+    const y = getYear();
+    const h = { ...getHolidays(y) };
+    fn(h);
+    store.holidays[y] = h;
+    saveStore();
+    renderHoliday();
+}
+function addHoliday() {
+    const y = getYear();
+    const v = $('holDate').value;
+    const name = $('holName').value.trim() || '放假';
+    if (!v) { toast('請先選擇日期'); return; }
+    const [yy, mm, dd] = v.split('-').map(Number);
+    if (yy !== y + 1911) { toast(`請選擇 ${y + 1911} 年（民國 ${y} 年）的日期`); return; }
+    editHolidays(h => h[`${mm}-${dd}`] = name);
+    $('holName').value = '';
+    toast(`已加入 ${mm}/${dd} ${name}`);
+}
+
+/* ---------- 匯出／匯入 ---------- */
+function download(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function exportData() {
+    const t = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${t.getFullYear() - 1911}${pad(t.getMonth() + 1)}${pad(t.getDate())}`;
+    const payload = { app: 'kitchen-leave-record', exportedAt: t.toISOString(), ...store };
+    download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `廚工補休紀錄_備份${stamp}.json`);
+    toast(`已匯出 ${store.workers.length} 位廚工的資料`);
+}
+
+// 支援本系統備份檔，也支援舊版 worktool4 的資料（當作 115 年）
+function parseImport(d) {
+    if (Array.isArray(d.workers) && d.workers.some(w => w.years)) {
+        return {
+            version: 1, currentYear: num(d.currentYear) || thisRocYear, currentId: d.currentId,
+            workers: d.workers.map(makeWorker), holidays: d.holidays || {}
+        };
+    }
+    const legacy = Array.isArray(d.workers) ? d.workers : d.hoursMap ? [d] : null;
+    if (!legacy) throw new Error('格式不符');
+    return {
+        version: 1, currentYear: 115, currentId: null, holidays: {},
+        workers: legacy.map(o => makeWorker({ job: o.job, name: o.name, years: { 115: { vDays: o.vDays, hoursMap: o.hoursMap } } }))
+    };
+}
+
+function importData(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const next = parseImport(JSON.parse(reader.result));
+            if (!next.workers.length) throw new Error('檔案裡沒有任何廚工資料');
+            const names = next.workers.map((w, i) => w.name || `未命名 ${i + 1}`).join('、');
+            if (!confirm(`檔案內有 ${next.workers.length} 位廚工：\n${names}\n\n匯入後會「取代」目前這台電腦上的所有資料，確定要匯入嗎？`)) return;
+            if (!next.workers.some(w => w.id === next.currentId)) next.currentId = next.workers[0].id;
+            store = next;
+            saveStore();
+            fillYearSelect();
+            renderAll();
+            toast(`匯入完成，共 ${store.workers.length} 位廚工`);
+        } catch (e) {
+            alert('匯入失敗：這不是有效的備份檔。\n' + e.message);
+        }
+    };
+    reader.readAsText(file, 'utf-8');
+}
+
+/* ---------- 年度／分頁 ---------- */
+function fillYearSelect() {
+    const years = new Set([thisRocYear - 1, thisRocYear, thisRocYear + 1, thisRocYear + 2, store.currentYear,
+        ...Object.keys(PRESET_HOLIDAYS).map(Number)]);
+    store.workers.forEach(w => Object.keys(w.years).forEach(y => years.add(Number(y))));
+    const sel = $('yearSel');
+    sel.innerHTML = '';
+    [...years].sort((a, b) => a - b).forEach(y => {
+        const o = el('option', '', y);
+        o.value = y;
+        sel.appendChild(o);
+    });
+    sel.value = store.currentYear;
+}
+
+let currentView = 'record';
+function renderAll() {
+    const y = getYear();
+    $('mainTitle').textContent = `民國 ${y} 年（${y + 1911}年）廚工補休時數紀錄表`;
+    document.querySelectorAll('.yearText').forEach(e => e.textContent = y);
+    if (currentView === 'record') renderRecord();
+    if (currentView === 'settle') renderSettle();
+    if (currentView === 'blank') renderBlank();
+    if (currentView === 'holiday') renderHoliday();
+}
+function showView(v) {
+    currentView = v;
+    document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+    document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+    renderAll();
+}
+
+let toastTimer;
+function toast(msg) {
+    let t = $('toast');
+    if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function init() {
+    loadStore();
+    fillYearSelect();
+    $('yearSel').onchange = e => { store.currentYear = num(e.target.value); saveStore(); renderAll(); };
+    document.querySelectorAll('#nav button').forEach(b => b.onclick = () => showView(b.dataset.view));
+    $('recordSheet').addEventListener('input', onHourInput);
+    ['fJob', 'fName', 'fDays', 'fSalary'].forEach(id => $(id).oninput = onInfoInput);
+    $('btnAddWorker').onclick = addWorker;
+    $('btnDeleteWorker').onclick = deleteCurrentWorker;
+    $('btnExport').onclick = exportData;
+    $('btnImport').onclick = () => $('importFile').click();
+    $('importFile').onchange = importData;
+    $('btnPrintOne').onclick = () => doPrint([buildSheet(getYear(), currentWorker(), true)]);
+    $('btnPrintAll').onclick = () => doPrint(store.workers.map(w => buildSheet(getYear(), w, true)));
+    $('btnPrintSettle').onclick = printSettle;
+    $('btnCsv').onclick = exportCsv;
+    document.querySelectorAll('input[name="blankMode"]').forEach(r => r.onchange = renderBlank);
+    $('btnPrintBlank').onclick = printBlank;
+    $('btnHolAdd').onclick = addHoliday;
+    $('btnHolReset').onclick = () => {
+        if (!confirm('確定要還原為內建的人事總處假日嗎？你自行修改的部分會被清除。')) return;
+        delete store.holidays[getYear()];
+        saveStore();
+        renderHoliday();
+    };
+    renderAll();
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
