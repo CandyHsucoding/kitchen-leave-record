@@ -564,11 +564,6 @@ function buildSheet(y, worker, withData) {
     info.appendChild(field('列印日期：', todayRoc()));
     sheet.appendChild(info);
     sheet.appendChild(buildTable(y, 'static', rec ? rec.hoursMap : {}));
-    if (!withData) {
-        const foot = el('div', 'sheet-foot');
-        foot.append(el('div', '', '廚工簽名：＿＿＿＿＿＿＿＿'), el('div', '', '營養師核章：＿＿＿＿＿＿＿＿'));
-        sheet.appendChild(foot);
-    }
     return sheet;
 }
 
